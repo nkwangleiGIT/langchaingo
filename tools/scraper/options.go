@@ -101,3 +101,15 @@ func WithBlacklist(blacklist []string) Options {
 		o.Blacklist = append(o.Blacklist, blacklist...)
 	}
 }
+
+// WithHandleLinks sets the handleLinks option for the Scraper.
+//
+// Default value: false
+
+// handleLinks: The boolean value indicating if the scraper will handle links of href tag
+// Returns a function that sets the handleLinks option for the Scraper.
+func WithHandleLinks(handleLinks bool) Options {
+	return func(o *Scraper) {
+		o.HandleLinks = handleLinks
+	}
+}
