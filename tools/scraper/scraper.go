@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gocolly/colly"
@@ -13,20 +14,21 @@ import (
 )
 
 const (
-	DefualtMaxDept   = 1
-	DefualtParallels = 2
-	DefualtDelay     = 3
-	DefualtAsync     = true
+	DefaultMaxDept   = 1
+	DefaultParallels = 2
+	DefaultDelay     = 3
+	DefaultAsync     = true
 )
 
 var ErrScrapingFailed = errors.New("scraper could not read URL, or scraping is not allowed for provided URL")
 
 type Scraper struct {
-	MaxDepth  int
-	Parallels int
-	Delay     int64
-	Blacklist []string
-	Async     bool
+	MaxDepth    int
+	Parallels   int
+	Delay       int64
+	Blacklist   []string
+	Async       bool
+	HandleLinks bool
 }
 
 var _ tools.Tool = Scraper{}
@@ -41,10 +43,10 @@ var _ tools.Tool = Scraper{}
 // error value is nil if the Scraper is created successfully.
 func New(options ...Options) (*Scraper, error) {
 	scraper := &Scraper{
-		MaxDepth:  DefualtMaxDept,
-		Parallels: DefualtParallels,
-		Delay:     int64(DefualtDelay),
-		Async:     DefualtAsync,
+		MaxDepth:  DefaultMaxDept,
+		Parallels: DefaultParallels,
+		Delay:     int64(DefaultDelay),
+		Async:     DefaultAsync,
 		Blacklist: []string{
 			"login",
 			"signup",
@@ -54,6 +56,7 @@ func New(options ...Options) (*Scraper, error) {
 			"download",
 			"redirect",
 		},
+		HandleLinks: false,
 	}
 
 	for _, opt := range options {
@@ -111,8 +114,8 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 	}
 
 	var siteData strings.Builder
-	homePageLinks := make(map[string]bool)
-	scrapedLinks := make(map[string]bool)
+	var homePageLinks sync.Map
+	var scrapedLinks sync.Map
 
 	c.OnRequest(func(r *colly.Request) {
 		if ctx.Err() != nil {
@@ -124,8 +127,9 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 		currentURL := e.Request.URL.String()
 
 		// Only process the page if it hasn't been visited yet
-		if !scrapedLinks[currentURL] {
-			scrapedLinks[currentURL] = true
+		isVisited, ok := scrapedLinks.Load(currentURL)
+		if !ok || !isVisited.(bool) {
+			scrapedLinks.Store(currentURL, true)
 
 			siteData.WriteString("\n\nPage URL: " + currentURL)
 
@@ -152,8 +156,9 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 			if currentURL == input {
 				e.ForEach("a", func(_ int, el *colly.HTMLElement) {
 					link := el.Attr("href")
-					if link != "" && !homePageLinks[link] {
-						homePageLinks[link] = true
+					isHomepage, ok := homePageLinks.Load(link)
+					if link != "" && (!ok || !isHomepage.(bool)) {
+						homePageLinks.Store(link, true)
 						siteData.WriteString("\nLink: " + link)
 					}
 				})
@@ -162,6 +167,9 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 	})
 
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		if !s.HandleLinks {
+			return
+		}
 		link := e.Attr("href")
 		absoluteLink := e.Request.AbsoluteURL(link)
 
@@ -190,7 +198,8 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 		}
 
 		// Only visit the page if it hasn't been visited yet
-		if !scrapedLinks[u.String()] {
+		isScraped, ok := scrapedLinks.Load(u.String())
+		if !ok || !isScraped.(bool) {
 			err := c.Visit(u.String())
 			if err != nil {
 				siteData.WriteString(fmt.Sprintf("\nError following link %s: %v", link, err))
@@ -209,12 +218,12 @@ func (s Scraper) Call(ctx context.Context, input string) (string, error) {
 	default:
 		c.Wait()
 	}
-
 	// Append all scraped links
 	siteData.WriteString("\n\nScraped Links:")
-	for link := range scrapedLinks {
-		siteData.WriteString("\n" + link)
-	}
+	scrapedLinks.Range(func(key, value any) bool {
+		siteData.WriteString("\n" + key.(string))
+		return true
+	})
 
 	return siteData.String(), nil
 }
