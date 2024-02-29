@@ -1,15 +1,20 @@
 package textsplitter
 
+import "unicode/utf8"
+
 // Options is a struct that contains options for a text splitter.
 type Options struct {
 	ChunkSize         int
 	ChunkOverlap      int
 	Separators        []string
+	LenFunc           func(string) int
 	ModelName         string
 	EncodingName      string
 	AllowedSpecial    []string
 	DisallowedSpecial []string
 	SecondSplitter    TextSplitter
+	CodeBlocks        bool
+	ReferenceLinks    bool
 }
 
 // DefaultOptions returns the default options for all text splitter.
@@ -18,6 +23,7 @@ func DefaultOptions() Options {
 		ChunkSize:    _defaultTokenChunkSize,
 		ChunkOverlap: _defaultTokenChunkOverlap,
 		Separators:   []string{"\n\n", "\n", " ", ""},
+		LenFunc:      utf8.RuneCountInString,
 
 		ModelName:         _defaultTokenModelName,
 		EncodingName:      _defaultTokenEncoding,
@@ -47,6 +53,13 @@ func WithChunkOverlap(chunkOverlap int) Option {
 func WithSeparators(separators []string) Option {
 	return func(o *Options) {
 		o.Separators = separators
+	}
+}
+
+// WithLenFunc sets the lenfunc for a text splitter.
+func WithLenFunc(lenFunc func(string) int) Option {
+	return func(o *Options) {
+		o.LenFunc = lenFunc
 	}
 }
 
@@ -82,5 +95,26 @@ func WithDisallowedSpecial(disallowedSpecial []string) Option {
 func WithSecondSplitter(secondSplitter TextSplitter) Option {
 	return func(o *Options) {
 		o.SecondSplitter = secondSplitter
+	}
+}
+
+// WithCodeBlocks sets whether indented and fenced codeblocks should be included
+// in the output.
+func WithCodeBlocks(renderCode bool) Option {
+	return func(o *Options) {
+		o.CodeBlocks = renderCode
+	}
+}
+
+// WithReferenceLinks sets whether reference links (i.e. `[text][label]`)
+// should be patched with the url and title from their definition. Note that
+// by default reference definitions are dropped from the output.
+//
+// Caution: this also affects how other inline elements are rendered, e.g. all
+// emphasis will use `*` even when another character (e.g. `_`) was used in the
+// input.
+func WithReferenceLinks(referenceLinks bool) Option {
+	return func(o *Options) {
+		o.ReferenceLinks = referenceLinks
 	}
 }

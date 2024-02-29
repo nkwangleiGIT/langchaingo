@@ -11,22 +11,20 @@ var (
 	ErrEmptyResponse = errors.New("empty response")
 )
 
-const huggingfaceAPIBaseURL = "https://api-inference.huggingface.co"
-
 type Client struct {
 	Token string
 	Model string
 	url   string
 }
 
-func New(token string, model string) (*Client, error) {
+func New(token, model, url string) (*Client, error) {
 	if token == "" {
 		return nil, ErrInvalidToken
 	}
 	return &Client{
 		Token: token,
 		Model: model,
-		url:   huggingfaceAPIBaseURL,
+		url:   url,
 	}, nil
 }
 
@@ -34,7 +32,7 @@ type InferenceRequest struct {
 	Model             string        `json:"repositoryId"`
 	Prompt            string        `json:"prompt"`
 	Task              InferenceTask `json:"task"`
-	Temperature       float64       `json:"temperature,omitempty"`
+	Temperature       float64       `json:"temperature"`
 	TopP              float64       `json:"top_p,omitempty"`
 	TopK              int           `json:"top_k,omitempty"`
 	MinLength         int           `json:"min_length,omitempty"`

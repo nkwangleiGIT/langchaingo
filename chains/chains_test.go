@@ -2,6 +2,7 @@ package chains
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -34,10 +35,22 @@ func (spv stringPromptValue) Messages() []schema.ChatMessage {
 	return nil
 }
 
-func (l *testLanguageModel) Call(_ context.Context, prompt string, _ ...llms.CallOption) (string, error) {
+func (l *testLanguageModel) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
+	return llms.GenerateFromSinglePrompt(ctx, l, prompt, options...)
+}
+
+func (l *testLanguageModel) GenerateContent(_ context.Context, mc []llms.MessageContent, _ ...llms.CallOption) (*llms.ContentResponse, error) { //nolint: lll, cyclop, whitespace
+	part0 := mc[0].Parts[0]
+	var prompt string
+	if tc, ok := part0.(llms.TextContent); ok {
+		prompt = tc.Text
+	} else {
+		return nil, fmt.Errorf("passed non-text part")
+	}
 	l.recordedPrompt = []schema.PromptValue{
 		stringPromptValue{s: prompt},
 	}
+
 	if l.simulateWork > 0 {
 		time.Sleep(l.simulateWork)
 	}
@@ -50,24 +63,14 @@ func (l *testLanguageModel) Call(_ context.Context, prompt string, _ ...llms.Cal
 		llmResult = prompt
 	}
 
-	return llmResult, nil
-}
-
-func (l *testLanguageModel) Generate(
-	ctx context.Context, prompts []string, options ...llms.CallOption,
-) ([]*llms.Generation, error) {
-	result, err := l.Call(ctx, prompts[0], options...)
-	if err != nil {
-		return nil, err
-	}
-	return []*llms.Generation{
-		{
-			Text: result,
+	return &llms.ContentResponse{
+		Choices: []*llms.ContentChoice{
+			{Content: llmResult},
 		},
 	}, nil
 }
 
-var _ llms.LLM = &testLanguageModel{}
+var _ llms.Model = &testLanguageModel{}
 
 func TestApply(t *testing.T) {
 	t.Parallel()
